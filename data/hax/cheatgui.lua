@@ -1,10 +1,5 @@
 dofile_once( "data/scripts/lib/coroutines.lua" )
 dofile_once( "data/scripts/lib/utilities.lua" )
-dofile_once( "data/scripts/perks/perk.lua")
-dofile_once( "data/scripts/gun/gun_actions.lua" )
-dofile_once( "data/hax/materials.lua")
-dofile_once( "data/hax/alchemy.lua")
-dofile_once( "data/hax/gun_builder.lua")
 dofile_once( "data/hax/superhackykb.lua")
 
 local CHEATGUI_VERSION = "0.0.1"
@@ -63,11 +58,9 @@ local gui = _cheat_gui
 
 local hax_btn_id = 123
 
-local closed_panel, perk_panel, cards_panel, menu_panel, flasks_panel
-local wands_panel, builder_panel, always_cast_panel, teleport_panel, info_panel
-local health_panel
+local closed_panel, menu_panel
 
-local function Panel(options)
+function Panel(options)
   if not options.name then
     options.name = options[1]
   end
@@ -80,16 +73,24 @@ end
 local panel_stack = {}
 local _active_panel = nil
 
+local function dummy_frame_func() 
+  GamePrint("dummy frame func")
+end
+
 local function _change_active_panel(panel)
   if panel == _active_panel then return end
   set_type_default(nil)
   set_type_target(nil)
-  _gui_frame_function = panel.func
+  if panel then
+    _gui_frame_function = panel.func 
+  else
+    _gui_frame_function = dummy_frame_func
+  end
 end
 
-local function prev_panel()
+function prev_panel()
   if #panel_stack < 2 then
-    _change_active_panel(closed_panel)
+    _change_active_panel(nil)
     panel_stack = {}
   else
     -- pop off last panel
@@ -112,7 +113,7 @@ local function enter_panel(panel)
 end
 
 local function hide_gui()
-  _change_active_panel(closed_panel)
+  _change_active_panel(nil)
 end
 
 local function goto_subpanel(panel)
@@ -121,7 +122,13 @@ local function goto_subpanel(panel)
   enter_panel(panel)
 end
 
-local function show_gui()
+function goto_subpanel_clean(panel)
+    panel_stack = {}
+    GamePrint("entering panel " .. panel.name)
+    enter_panel(panel)
+end
+
+function show_gui()
   if #panel_stack == 0 then
     enter_panel(menu_panel)
   else
@@ -129,7 +136,7 @@ local function show_gui()
   end
 end
 
-local function breadcrumbs(x, y)
+function breadcrumbs(x, y)
   GuiLayoutBeginHorizontal(gui, x, y)
   if GuiButton( gui, 0, 0, "[-]", hax_btn_id+1) then
     hide_gui()
@@ -175,26 +182,6 @@ local function register_widget(wname, w)
   table.insert(_all_info_widgets, {wname, w})
 end
 
-closed_panel = Panel{"[+]", function()
-  GuiLayoutBeginHorizontal( gui, 1, 0 )
-  if GuiButton( gui, 0, 0, "[+]", hax_btn_id ) then
-    show_gui()
-  end
-  GuiLayoutEnd( gui )
-  local col_pos = 5
-  for idx, winfo in ipairs(_sorted_info_widgets) do
-    local wname, widget = unpack(winfo)
-    GuiLayoutBeginHorizontal(gui, col_pos, 0)
-    local text = widget:text()
-    if idx > 1 then text = "| " .. text end
-    if GuiButton( gui, 0, 0, text, hax_btn_id + idx + 1) then
-      widget:on_click()
-    end
-    GuiLayoutEnd( gui )
-    col_pos = col_pos + (widget.width or 10)
-  end
-end}
-
 local function get_player()
   return (EntityGetWithTag( "player_unit" ) or {})[1]
 end
@@ -203,45 +190,6 @@ local function get_player_pos()
   local player = get_player()
   if not player then return 0, 0 end
   return EntityGetTransform(player)
-end
-
-local function teleport(x, y)
-  EntitySetTransform(get_player(), x, y)
-end
-
-local function get_health()
-  local dm = EntityGetComponent( get_player(), "DamageModelComponent" )[1]
-  return ComponentGetValue(dm, "hp"), ComponentGetValue(dm, "max_hp")
-end
-
-local function set_health(cur_hp, max_hp)
-  local damagemodels = EntityGetComponent( get_player(), "DamageModelComponent" )
-  if( damagemodels ~= nil ) then
-    for i,damagemodel in ipairs(damagemodels) do
-      ComponentSetValue( damagemodel, "max_hp", max_hp)
-      ComponentSetValue( damagemodel, "hp", cur_hp)
-    end
-  end
-end
-
-local function quick_heal()
-  local _, max_hp = get_health()
-  set_health(max_hp, max_hp)
-end
-
-local function spawn_potion(material, quantity)
-  local x, y = get_player_pos()
-  local entity = EntityLoad("data/hax/potion_empty.xml", x, y)
-  AddMaterialInventoryMaterial( entity, material, quantity or 1000 )
-end
-
-local function spawn_item(path)
-  local x, y = get_player_pos()
-  local entity = EntityLoad(path, x, y)
-end
-
-local function wrap_spawn(path)
-  return function() spawn_item(path) end
 end
 
 local function maybe_call(s_or_f, opt)
@@ -364,7 +312,7 @@ local function breakup_pages(options, page_size)
   return pages
 end
 
-local function wrap_paginate(title, options, page_size)
+function wrap_paginate(title, options, page_size)
   page_size = page_size or 28*4
   local cur_page = 1
   local pages = breakup_pages(options, page_size)
@@ -536,118 +484,6 @@ local function create_numerical(title, increments, default, kind)
   end, wrapper
 end
 
-local localization_widget, localization_val = create_radio("Show localized names:", {
-  {"Yes", true}, {"No", false}
-}, 2, 16)
-
-local shuffle_widget, shuffle_val = create_radio("Shuffle", {
-  {"Yes", true}, {"No", false}
-}, 2)
-
-local mana_widget, mana_val = create_numerical("Mana", {50, 500}, 300, 'int')
-local mana_rec_widget, mana_rec_val = create_numerical("Mana Recharge", {10, 100}, 100, 'int')
-local slots_widget, slots_val = create_numerical("Slots", {1, 5}, 5, 'int')
-local multi_widget, multi_val = create_numerical("Multicast", {1}, 1, 'int')
-local reload_widget, reload_val = create_numerical("Reload", {1, 10}, 30, 'frame')
-local delay_widget, delay_val = create_numerical("Delay", {1, 10}, 30, 'frame')
-local spread_widget, spread_val = create_numerical("Spread", {0.1, 1}, 0.0, 'float')
-local speed_widget, speed_val = create_numerical("Speed", {0.01, 0.1}, 1.0, 'float')
-
-local always_cast_choice = nil
-
-local builder_widgets = {
-  {shuffle_widget, shuffle_val},
-  {mana_widget, mana_val},
-  {mana_rec_widget, mana_rec_val},
-  {slots_widget, slots_val},
-  {multi_widget, multi_val},
-  {reload_widget, reload_val},
-  {delay_widget, delay_val},
-  {spread_widget, spread_val},
-  {speed_widget, speed_val}
-}
-
-builder_panel = Panel{"wand builder", function()
-  breadcrumbs(1, 0)
-
-  local button_id = hax_btn_id + 30
-  for idx, widget in ipairs(builder_widgets) do
-    button_id = widget[1](button_id, 1, 8 + idx*4)
-  end
-
-  GuiLayoutBeginVertical(gui, 1, 48)
-  if GuiButton( gui, 0, 0, "Always cast: " .. (always_cast_choice or "None"), button_id+1) then
-    enter_panel(always_cast_panel)
-  end
-  if GuiButton( gui, 0, 0, "[Reset all]", button_id+2) then
-    for _, widget in ipairs(builder_widgets) do
-      widget[2]:reset()
-    end
-  end
-  if GuiButton( gui, 0, 4, "[Spawn]", button_id+3) then
-    local x, y = get_player_pos()
-    local gun = {
-      deck_capacity = slots_val.value,
-      actions_per_round = multi_val.value,
-      reload_time = reload_val.value,
-      shuffle_deck_when_empty = (shuffle_val.value and 1) or 0,
-      fire_rate_wait = delay_val.value,
-      spread_degrees = spread_val.value,
-      speed_multiplier = speed_val.value,
-      mana_max = mana_val.value,
-      mana_charge_speed = mana_rec_val.value,
-      always_cast = always_cast_choice
-    }
-    build_gun(x, y, gun)
-  end
-  GuiLayoutEnd(gui)
-end}
-
-local xpos_widget, xpos_val = create_numerical("X", {100, 1000, 10000}, 0, 'int')
-local ypos_widget, ypos_val = create_numerical("Y", {100, 1000, 10000}, 0, 'int')
-
-teleport_panel = Panel{"teleport", function()
-  local button_id = hax_btn_id + 20
-  button_id = xpos_widget(button_id, 1, 12)
-  button_id = ypos_widget(button_id, 1, 16)
-
-  breadcrumbs(1, 0)
-
-  GuiLayoutBeginVertical(gui, 1, 20)
-  if GuiButton( gui, 0, 0, "[Get current position]", button_id+1) then
-    local x, y = get_player_pos()
-    xpos_val.value, ypos_val.value = math.floor(x), math.floor(y)
-  end
-  if GuiButton( gui, 0, 4, "[Zero position]", button_id+2) then
-    xpos_val.value, ypos_val.value = 0, 0
-  end
-  if GuiButton( gui, 0, 8, "[Teleport]", button_id+3) then
-    GamePrint(("Attempting to teleport to (%d, %d)"):format(xpos_val.value, ypos_val.value))
-    teleport(xpos_val.value, ypos_val.value)
-  end
-  GuiLayoutEnd(gui)
-end}
-
-local cur_hp_widget, cur_hp_val = create_numerical("HP", {1, 4}, 4, 'hearts')
-local max_hp_widget, max_hp_val = create_numerical("Max HP", {1, 4}, 4, 'hearts')
-
-health_panel = Panel{"health", function()
-  local button_id = hax_btn_id + 20
-  button_id = cur_hp_widget(button_id, 1, 12)
-  button_id = max_hp_widget(button_id, 1, 16)
-
-  breadcrumbs(1, 0)
-
-  GuiLayoutBeginVertical(gui, 1, 20)
-  if GuiButton( gui, 0, 0, "[Get current health]", button_id+1) then
-    cur_hp_val.value, max_hp_val.value = get_health()
-  end
-  if GuiButton( gui, 0, 8, "[Apply health changes]", button_id+3) then
-    set_health(cur_hp_val.value, max_hp_val.value)
-  end
-  GuiLayoutEnd(gui)
-end}
-
 -- build these button lists once so we aren't rebuilding them every frame
 local function resolve_localized_name(s, default)
   if s:sub(1,1) ~= "$" then return s end
@@ -659,155 +495,17 @@ local function localized_name(thing)
   if localization_val.value then return thing.ui_name else return thing.id end
 end
 
-local function spawn_spell_button(card)
-  local x, y = get_player_pos()
-  GamePrint( "Attempting to spawn " .. card.id)
-  CreateItemActionEntity( card.id, x, y )
-end
-
-local function set_always_cast(card)
-  always_cast_choice = card.id
-  prev_panel()
-end
-
-local spell_options = {}
-local always_cast_options = {
-  {
-    text = "None", 
-    f = function()
-      always_cast_choice = nil
-      prev_panel()
-    end
-  }
-}
-
-for idx, card in ipairs(actions) do
-  local ui_name = resolve_localized_name(card.name)
-  local id = card.id:lower()
-  if (not ui_name) or (ui_name == "") then ui_name = id end
-  spell_options[idx] = {
-    text = localized_name,
-    id = id, ui_name = ui_name,
-    f = spawn_spell_button
-  }
-  always_cast_options[idx+1] = {
-    text = localized_name,
-    id = id, ui_name = ui_name,
-    f = set_always_cast
-  }
-end
-
-local function spawn_perk(perk_id, auto_pickup_entity)
-  local x, y = get_player_pos()
-  local perk_entity = perk_spawn( x, y - 8, perk_id )
-  if auto_pickup_entity then
-    perk_pickup(perk_entity, auto_pickup_entity, nil, true, false)
-  end
-end
-
-local function spawn_perk_button(perk)
-  GamePrint( "Attempting to spawn " .. perk.id)
-  spawn_perk(perk.id, get_player())
-end
-
-local perk_options = {}
-for idx, perk in ipairs(perk_list) do
-  perk_options[idx] = {
-    text = localized_name, 
-    id = perk.id,
-    ui_name = resolve_localized_name(perk.ui_name, perk.id), 
-    f = spawn_perk_button
-  }
-end
-
-local quantity_widget, quantity_val = create_numerical("Quantity mult:", {100, 1000}, 1000, 'mills')
-
-local function spawn_potion_button(potion)
-  GamePrint( "Attempting to spawn potion of " .. potion.id)
-  spawn_potion(potion.id, quantity_val.value)
-end
-
-local potion_options = {}
-for idx, matinfo in ipairs(materials_list) do
-  local material, translated_material = unpack(matinfo)
-  if material:sub(1,1) ~= "-" then
-    potion_options[idx] = {
-      text = localized_name, 
-      ui_name = translated_material, id = material,
-      f = spawn_potion_button
-    }
-  else
-    potion_options[idx] = {text = material, f = function() end}
-  end
-end
-
-local wand_options = {}
-for i = 1, 5 do
-  wand_options[i] = {
-    "Wand Level " .. i, 
-    wrap_spawn("data/entities/items/wand_level_0" .. i .. ".xml")
-  }
-end
-table.insert(wand_options, {"Haxx", wrap_spawn("data/hax/wand_hax.xml")})
-
-local tourist_mode_on = false
-local function toggle_tourist_mode()
-  tourist_mode_on = not tourist_mode_on
-  local herd = (tourist_mode_on and "healer") or "player"
-  GenomeSetHerdId( get_player(), herd )
-  GamePrint("Tourist mode: " .. tostring(tourist_mode_on))
-end
-
-local xray_added = false
-local function add_permanent_xray()
-  if xray_added then return end
-  local px, py = get_player_pos()
-  local cid = EntityLoad( "data/entities/misc/effect_remove_fog_of_war.xml", px, py )
-  EntityAddChild( get_player(), cid )
-  -- EntityAddComponent(get_player(), "MagicXRayComponent", {
-  --   radius = 2048,
-  --   steps_per_frame = 8
-  -- })
-  GamePrint("Permanent XRay Added?")
-  xray_added = true
-end
-
 local seedval = "?"
 SetRandomSeed(0, 0)
 seedval = tostring(Random() * 2^31)
 
-local LC, AP, LC_prob, AP_prob = get_alchemy()
-
-local function localize_material(mat)
-  local n = GameTextGet("$mat_" .. mat)
-  if n and n ~= "" then return n else return "[" .. mat .. "]" end
-end
-
-local function format_combo(combo, prob, localize)
-  local ret = {}
-  for idx, mat in ipairs(combo) do
-    ret[idx] = (localize and localize_material(mat)) or mat
-  end
-  return table.concat(ret, ", ") .. " (" .. prob .. "%)"
-end
-
-local alchemy_combos = {
-  AP = {
-    [false]=format_combo(AP, AP_prob, false),
-    [true]=format_combo(AP, AP_prob, true)
-  },
-  LC = {
-    [false]=format_combo(LC, LC_prob, false),
-    [true]=format_combo(LC, LC_prob, true)
-  }
-}
-
 local extra_buttons = {}
-function register_cheat_button(title, f)
+
+function register_extra_button(title, f)
   table.insert(extra_buttons, {title, f})
 end
 
-local function draw_extra_buttons(startid)
+function draw_extra_buttons(startid)
   for _, button in ipairs(extra_buttons) do
     local title, f = button[1], button[2]
     if type(title) == 'function' then title = title() end
@@ -823,71 +521,23 @@ local function draw_extra_buttons(startid)
   return startid
 end
 
-local function wrap_localized(f)
-  local prev_localization = false
-  return function()
-    localization_widget(hax_btn_id+20, 31, 3)
-    local localization_changed = (prev_localization ~= localization_val.value)
-    prev_localization = localization_val.value
-    f(localization_changed)
-  end
+local main_panels = {}
+
+function register_main_panel(panel) 
+  table.insert(main_panels, panel)
 end
-
-local _flask_base = wrap_localized(wrap_paginate("Select a flask to spawn:", potion_options))
-local function flask_panel_func()
-  quantity_widget(hax_btn_id+15, 61, 3)
-  _flask_base()
-end
-
-local gui_grid_ref_panel = Panel{"gui grid ref.", function()
-  breadcrumbs(1, 0)
-  for row = 0, 100, 10 do
-    for col = 0, 100, 10 do
-      GuiLayoutBeginHorizontal(gui, col, row)
-      GuiText(gui, 0, 0, ("(%d,%d)"):format(col, row))
-      GuiLayoutEnd(gui)
-    end
-  end
-end}
-
-always_cast_panel = Panel{"always cast", wrap_localized(wrap_paginate("Select a spell: ", always_cast_options))}
-cards_panel = Panel{"spells", wrap_localized(wrap_paginate("Select a spell to spawn:", spell_options))}
-perk_panel = Panel{"perks", wrap_localized(wrap_paginate("Select a perk to spawn:", perk_options))}
-flasks_panel = Panel{"flasks", flask_panel_func}
-
-wands_panel = Panel{"wands", function()
-  grid_panel("Select a wand to spawn:", wand_options)
-end}
-
-info_panel = Panel{"widgets", function()
-  breadcrumbs(1, 0)
-  GuiLayoutBeginVertical(gui, 1, 11)
-  for idx, winfo in ipairs(_all_info_widgets) do
-    local wname, w = unpack(winfo)
-    local enabled = _info_widgets[wname] ~= nil
-    local text = w:text()
-    if enabled then
-      if GuiButton(gui, 0, 0, "[*] " .. text, hax_btn_id + 10 + idx) then
-        remove_info_widget(wname)
-      end
-    else
-      if GuiButton(gui, 0, 0, "[ ] " .. text, hax_btn_id + 10 + idx) then
-        GamePrint("Adding " .. wname .. " to info bar (minimize cheatgui to see)")
-        add_info_widget(wname, w)
-      end
-    end
-  end
-  GuiLayoutEnd(gui)
-end}
-
-local main_panels = {
-  perk_panel, cards_panel, flasks_panel, wands_panel, 
-  builder_panel, health_panel,
-  teleport_panel, info_panel, gui_grid_ref_panel
-}
 
 local function draw_main_panels(startid)
   for idx, panel in ipairs(main_panels) do
+    if GuiButton( gui, 0, 0, panel.name .. "->", startid + idx ) then
+      enter_panel(panel)
+    end
+  end
+  return startid + #main_panels + 1
+end
+
+local function draw_panels(panels)
+  for idx, panel in ipairs(panels) do
     if GuiButton( gui, 0, 0, panel.name .. "->", startid + idx ) then
       enter_panel(panel)
     end
@@ -903,29 +553,6 @@ menu_panel = Panel{CHEATGUI_TITLE, function()
   GuiLayoutEnd( gui)
 end}
 
-register_cheat_button("[edit wands everywhere]", function()
-  spawn_perk("EDIT_WANDS_EVERYWHERE", get_player())
-end)
-
-register_cheat_button("[spell refresh]", function()
-  GameRegenItemActionsInPlayer( get_player() )
-end)
-
-register_cheat_button("[full heal]", function() quick_heal() end)
-
-register_cheat_button(function()
-  return "[" .. ((tourist_mode_on and "disable") or "enable") .. " tourist mode]"
-end, toggle_tourist_mode)
-
-register_cheat_button("[spawn orbs]", function()
-  local x, y = get_player_pos()
-  for i = 0, 13 do
-    EntityLoad(("data/entities/items/orbs/orb_%02d.xml"):format(i), x+(i*15), y - (i*5))
-  end
-end)
-
-enter_panel(menu_panel)
-
 -- widgets
 local function StatsWidget(dispname, keyname, extra_pad)
   local width = math.ceil(#dispname * 0.9) + (extra_pad or 3)
@@ -940,44 +567,16 @@ local function StatsWidget(dispname, keyname, extra_pad)
   }
 end
 
-register_widget("playtime", StatsWidget("Playtime", "playtime_str", 6))
-register_widget("visited", StatsWidget("Visited", "places_visited"))
-register_widget("gold", StatsWidget("Gold", "gold_all"))
-register_widget("hearts", StatsWidget("Hearts", "heart_containers"))
-register_widget("items", StatsWidget("Items", "items"))
-register_widget("projectiles", StatsWidget("Shot", "projectiles_shot", 3))
-register_widget("kicks", StatsWidget("Kicked", "kicks"))
-register_widget("kills", StatsWidget("Kills", "enemies_killed"))
-
-register_widget("position", {
-  text = function()
-    local x, y = get_player_pos()
-    return ("X: %d, Y: %d"):format(x, y)
-  end,
-  on_click = function()
-    goto_subpanel(info_panel)
-  end,
-  width = 15
-})
-
-local localize_alchemy = false
-
-for _, recipe in ipairs{"LC", "AP"} do
-  local maxwidth = math.max(
-    #(alchemy_combos[recipe][true]), 
-    #(alchemy_combos[recipe][false])
-  )
-
-  register_widget(recipe, {
-    text = function()
-      return ("%s: %s"):format(recipe, alchemy_combos[recipe][localize_alchemy])
-    end,
-    on_click = function()
-      localize_alchemy = not localize_alchemy
-    end,
-    width = math.ceil(maxwidth * 0.75)
-  })
-end
+-- register_widget("position", {
+--   text = function()
+--     local x, y = get_player_pos()
+--     return ("X: %d, Y: %d"):format(x, y)
+--   end,
+--   on_click = function()
+--     goto_subpanel(info_panel)
+--   end,
+--   width = 15
+-- })
 
 function _cheat_gui_main()
   if gui ~= nil then
@@ -994,5 +593,34 @@ function _cheat_gui_main()
     end
   end
 end
+
+local buy_panel, sell_panel
+
+local function create_trading_panels()  
+  buy_panel = Panel{"Buy", function()
+    breadcrumbs(1, 0)
+    GuiLayoutBeginVertical( gui, 1, 11 )
+    GuiLayoutEnd( gui)
+  end}
+
+  sell_panel = Panel{"Sell", function()
+    breadcrumbs(1, 0)
+    GuiLayoutBeginVertical( gui, 1, 11 )
+    GuiLayoutEnd( gui)
+  end}
+
+  return {buy_panel, sell_panel}
+end
+
+local function register_trading_panels() 
+  local trading_panels = create_trading_panels()
+  for idx, panel in ipairs(trading_panels) do
+    register_main_panel(panel)
+  end
+end
+
+register_trading_panels()
+
+enter_panel(menu_panel)
 
 hide_gui()

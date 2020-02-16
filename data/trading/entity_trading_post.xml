@@ -1,14 +1,4 @@
 <Entity tags="teleportable_NOT">
-	<Base file="data/entities/base_shop_item.xml">
-		<ItemCostComponent cost="400" />
-		
-		<SpriteComponent 
-			offset_x="8"
-			offset_y="30" 
-			 >
-		</SpriteComponent>
-	</Base>
-
 	<UIInfoComponent
 		name="trading_post"
 		>
